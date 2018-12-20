@@ -219,7 +219,7 @@ class Tools
      * @return boolean|string
      * @throws LocalCacheException
      */
-    public static function doRequest($method, $url, $options = [])
+    public static function doRequests($method, $url, $options = [])
     {
         $curl = curl_init();
         // GET参数设置
@@ -311,6 +311,7 @@ class Tools
      */
     public static function setCache($name, $value = '', $expired = 3600)
     {
+        return cache($name, $value, $expired);
         $file = self::_getCacheName($name);
         if (!file_put_contents($file, serialize(['name' => $name, 'value' => $value, 'expired' => time() + intval($expired)]))) {
             throw new LocalCacheException('local cache error.', '0');
@@ -325,6 +326,7 @@ class Tools
      */
     public static function getCache($name)
     {
+        return cache($name);
         $file = self::_getCacheName($name);
         if (file_exists($file) && ($content = file_get_contents($file))) {
             $data = unserialize($content);
@@ -343,6 +345,7 @@ class Tools
      */
     public static function delCache($name)
     {
+        return cache($name, null);
         $file = self::_getCacheName($name);
         return file_exists($file) ? unlink($file) : true;
     }
@@ -360,5 +363,62 @@ class Tools
         self::$cache_path = rtrim(self::$cache_path, '/\\') . DIRECTORY_SEPARATOR;
         file_exists(self::$cache_path) || mkdir(self::$cache_path, 0755, true);
         return self::$cache_path . $name;
+    }
+
+    /**
+     * @param string $method 请求方法
+     * @param string $url 请求方法
+     * @param array $options 请求参数[headers,data,ssl_cer,ssl_key]
+     * @return bool|string
+     */
+    protected static function doRequest($method, $url, $options = [])
+    {
+        $method = strtolower($method);
+        $curl   = curl();
+        // GET参数设置
+        if (!empty($options['query'])) {
+            $options['data'] = $options['query'];
+        }
+        // CURL头信息设置
+        if (!empty($options['headers'])) {
+            $curl = $curl->set_header($options['headers']);
+        }
+        // 证书文件设置
+        if (!empty($options['ssl_cer'])) {
+            if (file_exists($options['ssl_cer'])) {
+                $curl = $curl->set_ssl_cer($options['ssl_cer']);
+            } else {
+                throw new InvalidArgumentException("Certificate files that do not exist. --- [ssl_cer]");
+            }
+        }
+        // 证书文件设置
+        if (!empty($options['ssl_key'])) {
+            if (file_exists($options['ssl_key'])) {
+                $curl = $curl->set_ssl_key($options['ssl_key']);
+            } else {
+                throw new InvalidArgumentException("Certificate files that do not exist. --- [ssl_key]");
+            }
+        }
+        $data = !empty($options['data']) ? $options['data'] : [];
+        return $curl->$method($url, $data)->get_body();
+    }
+    /**
+     * 读取微信客户端IP
+     * @return null|string
+     */
+    static public function getAddress()
+    {
+        foreach (array('HTTP_X_FORWARDED_FOR', 'HTTP_CLIENT_IP', 'HTTP_X_CLIENT_IP', 'HTTP_X_CLUSTER_CLIENT_IP', 'REMOTE_ADDR') as $header) {
+            if (!isset($_SERVER[$header]) || ($spoof = $_SERVER[$header]) === null) {
+                continue;
+            }
+            sscanf($spoof, '%[^,]', $spoof);
+            if (!filter_var($spoof, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                $spoof = null;
+            } else {
+                return $spoof;
+            }
+        }
+        return '0.0.0.0';
     }
 }

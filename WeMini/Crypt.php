@@ -43,6 +43,7 @@ class Crypt extends BasicWeChat
         if ($errCode == 0) {
             return json_decode($data, true);
         }
+        wr_log('解密失败:code=' . $errCode . 'iv=' . $iv . 'sessionKey=' . $sessionKey . 'encryptedData=' . $encryptedData);
         return false;
     }
 
@@ -54,6 +55,10 @@ class Crypt extends BasicWeChat
     public function session($code)
     {
         $appid = $this->config->get('appid');
+        if ($this->isAuthorized()) {
+            $open = $this->getOpenService();
+            return $open->jsCodeToSession($code, $appid);
+        }
         $secret = $this->config->get('appsecret');
         $url = "https://api.weixin.qq.com/sns/jscode2session?appid={$appid}&secret={$secret}&js_code={$code}&grant_type=authorization_code";
         return json_decode(Tools::get($url), true);
@@ -79,5 +84,49 @@ class Crypt extends BasicWeChat
             throw  new InvalidDecryptException('用户信息解析失败', 403);
         }
         return array_merge($result, $userinfo);
+    }
+
+    /**
+     * 获取解密数据
+     * @param string $code 用户登录凭证（有效期五分钟）
+     * @param string $iv 加密算法的初始向量
+     * @param string $encryptedData 加密数据( encryptedData )
+     * @return array
+     * @throws InvalidDecryptException
+     * @throws InvalidResponseException
+     */
+    public function decodeData($code, $iv, $encryptedData)
+    {
+        if ($encryptedData == 'undefined' || $iv == 'undefined') {
+            $msg = '小程序用户信息获取失败,encrypted_data或者iv为undefined，code=' . $code;
+            wr_log($msg, 1);
+            throw new InvalidResponseException($msg, 403);
+        }
+        $cache_key = 'code:' . md5($code . $encryptedData . $iv);
+        if ($result = cache($cache_key)) {
+            return $result;
+        }
+        $result = $this->session($code);
+        if (empty($result['session_key']) || empty($result['openid'])) {
+            throw new InvalidResponseException('Code 换取 SessionKey 失败,session_key或者openid为空', 403);
+        }
+        $decode_result = $this->decode($iv, $result['session_key'], $encryptedData);
+        if ($decode_result === false) {
+            $db_api_log        = new \app\common\model\ApiLog();
+            $session_key_array = $db_api_log->getSessionKey($result['openid']);
+            foreach ($session_key_array as $key => $val) {
+                $decode_result = $this->decode($iv, $val, $encryptedData);
+                if ($decode_result !== false) {
+                    wr_log('iv:' . $iv . '通过新sessionKey:' . $val . '解密成功');
+                    break;
+                }
+            }
+            if ($decode_result === false) {
+                throw new InvalidDecryptException('用户信息解析失败，code='.$code, 403);
+            }
+        }
+        $result = array_merge($result, $decode_result);
+        cache($cache_key, $result, 60);
+        return $result;
     }
 }

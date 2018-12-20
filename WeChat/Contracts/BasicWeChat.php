@@ -63,9 +63,9 @@ class BasicWeChat
         if (empty($options['appid'])) {
             throw new InvalidArgumentException("Missing Config -- [appid]");
         }
-        if (empty($options['appsecret'])) {
-            throw new InvalidArgumentException("Missing Config -- [appsecret]");
-        }
+//        if (!isset($options['appsecret'])) {
+//            throw new InvalidArgumentException("Missing Config -- [appsecret]");
+//        }
         if (isset($options['GetAccessTokenCallback']) && is_callable($options['GetAccessTokenCallback'])) {
             $this->GetAccessTokenCallback = $options['GetAccessTokenCallback'];
         }
@@ -73,6 +73,23 @@ class BasicWeChat
             Tools::$cache_path = $options['cache_path'];
         }
         $this->config = new DataArray($options);
+    }
+
+    /**
+     * 获取开放平台实例对象
+     * @return \WeOpen\Service
+     */
+    protected function getOpenService()
+    {
+        return new \WeOpen\Service($this->config->get());
+    }
+    /**
+     * 是否第三方平台授权
+     * @return bool
+     */
+    protected function isAuthorized()
+    {
+        return $this->config->get('authorized');
     }
 
     /**
@@ -86,45 +103,32 @@ class BasicWeChat
         if (!empty($this->access_token)) {
             return $this->access_token;
         }
-        $cache = $this->config->get('appid') . '_access_token';
+        $cache              = $this->getAccessTokenCachekey();
         $this->access_token = Tools::getCache($cache);
-        if (!empty($this->access_token)) {
-            return $this->access_token;
-        }
-        // 处理开放平台授权公众号获取AccessToken
-        if (!empty($this->GetAccessTokenCallback) && is_callable($this->GetAccessTokenCallback)) {
-            $this->access_token = call_user_func_array($this->GetAccessTokenCallback, [$this->config->get('appid'), $this]);
-            if (!empty($this->access_token)) {
-                Tools::setCache($cache, $this->access_token, 7000);
+        if (empty($this->access_token)) {
+            // 处理开放平台授权公众号获取AccessToken
+            if (!empty($this->GetAccessTokenCallback) && is_callable($this->GetAccessTokenCallback)) {
+                $this->access_token = call_user_func_array($this->GetAccessTokenCallback, [$this->config->get('appid'), $this]);
+            } else {
+                list($appid, $secret) = [$this->config->get('appid'), $this->config->get('appsecret')];
+                $url    = "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={$appid}&secret={$secret}";
+                $result = Tools::json2arr(Tools::get($url));
+                if (!empty($result['access_token'])) {
+                    $this->access_token = $result['access_token'];
+                }
             }
-            return $this->access_token;
+            Tools::setCache($cache, $this->access_token, 7000);
         }
-        list($appid, $secret) = [$this->config->get('appid'), $this->config->get('appsecret')];
-        $url = "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={$appid}&secret={$secret}";
-        $result = Tools::json2arr(Tools::get($url));
-        if (!empty($result['access_token'])) {
-            Tools::setCache($cache, $result['access_token'], 7000);
-        }
-        return $this->access_token = $result['access_token'];
+        return $this->access_token;
     }
-
+    
     /**
-     * 设置外部接口 AccessToken
-     * @param string $access_token
-     * @throws \WeChat\Exceptions\LocalCacheException
-     * @author 高一平 <iam@gaoyiping.com>
-     *
-     * 当用户使用自己的缓存驱动时，直接实例化对象后可直接设置 AccessToekn
-     * - 多用于分布式项目时保持 AccessToken 统一
-     * - 使用此方法后就由用户来保证传入的 AccessToekn 为有效 AccessToekn
+     * 获取缓存key
+     * @return string
      */
-    public function setAccessToken($access_token)
+    protected function getAccessTokenCachekey()
     {
-        if (!is_string($access_token)) {
-            throw new InvalidArgumentException("Invalid AccessToken type, need string.");
-        }
-        $cache = $this->config->get('appid') . '_access_token';
-        Tools::setCache($cache, $this->access_token = $access_token);
+        return $this->config->get('access_token_cache_prefix') . $this->config->get('appid') . ':' . $this->config->get('component_appid');
     }
 
     /**
@@ -134,7 +138,7 @@ class BasicWeChat
     public function delAccessToken()
     {
         $this->access_token = '';
-        return Tools::delCache($this->config->get('appid') . '_access_token');
+        return Tools::delCache($this->getAccessTokenCachekey());
     }
 
     /**
@@ -175,7 +179,8 @@ class BasicWeChat
             return Tools::json2arr(Tools::post($url, $buildToJson ? Tools::arr2json($data) : $data));
         } catch (InvalidResponseException $e) {
             if (!$this->isTry && in_array($e->getCode(), ['40014', '40001', '41001', '42001'])) {
-                [$this->delAccessToken(), $this->isTry = true];
+                $this->delAccessToken();
+                $this->isTry = true;
                 return call_user_func_array([$this, $this->currentMethod['method']], $this->currentMethod['arguments']);
             }
             throw new InvalidResponseException($e->getMessage(), $e->getCode());
@@ -194,8 +199,8 @@ class BasicWeChat
     protected function registerApi(&$url, $method, $arguments = [])
     {
         $this->currentMethod = ['method' => $method, 'arguments' => $arguments];
-        if (empty($this->access_token)) {
-            $this->access_token = $this->getAccessToken();
+        if (empty($this->access_token) && !$this->getAccessToken()) {
+            return false;
         }
         return $url = str_replace('ACCESS_TOKEN', $this->access_token, $url);
     }

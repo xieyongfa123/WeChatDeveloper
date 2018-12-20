@@ -34,21 +34,31 @@ class Oauth extends BasicWeChat
     public function getOauthRedirect($redirect_url, $state = '', $scope = 'snsapi_base')
     {
         $appid = $this->config->get('appid');
+        if ($this->isAuthorized()) {
+            $open = $this->getOpenService();
+            return $open->getOauthRedirect($appid, $redirect_url, $state, $scope);
+        }
         $redirect_uri = urlencode($redirect_url);
         return "https://open.weixin.qq.com/connect/oauth2/authorize?appid={$appid}&redirect_uri={$redirect_uri}&response_type=code&scope={$scope}&state={$state}#wechat_redirect";
     }
 
     /**
      * 通过 code 获取 AccessToken 和 openid
+     * @param string $code 请求CODE
      * @return bool|array
-     * @throws Exceptions\InvalidResponseException
-     * @throws Exceptions\LocalCacheException
      */
-    public function getOauthAccessToken()
+    public function getOauthAccessToken($code = '')
     {
         $appid = $this->config->get('appid');
+        if (!$code && empty($_GET['code'])) {
+            return false;
+        }
+        $code = $code ?: $_GET['code'];
+        if ($this->isAuthorized()) {
+            $open = $this->getOpenService();
+            return $open->getOauthAccessToken($appid, $code);
+        }
         $appsecret = $this->config->get('appsecret');
-        $code = isset($_GET['code']) ? $_GET['code'] : '';
         $url = "https://api.weixin.qq.com/sns/oauth2/access_token?appid={$appid}&secret={$appsecret}&code={$code}&grant_type=authorization_code";
         return $this->httpGetForJson($url);
     }

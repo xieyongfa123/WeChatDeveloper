@@ -36,6 +36,9 @@ class BasicWePay
      */
     protected $params;
 
+    /** 执行错误消息及代码 */
+    public $errMsg;
+    public $errCode;
 
     /**
      * WeChat constructor.
@@ -70,6 +73,21 @@ class BasicWePay
             $this->params->set('sub_mch_id', $this->config->get('sub_mch_id'));
         }
     }
+    /**
+     * 支付XML统一回复
+     * @param array $data 需要回复的XML内容数组
+     * @param bool $isReturn 是否返回XML内容，默认不返回
+     * @return string
+     */
+    public function replyXml(array $data, $isReturn = false)
+    {
+        $xml = Tools::arr2xml($data);
+        if ($isReturn) {
+            return $xml;
+        }
+        ob_clean();
+        exit($xml);
+    }
 
     /**
      * 获取微信支付通知
@@ -103,9 +121,13 @@ class BasicWePay
      */
     public function getPaySign(array $data, $signType = 'MD5', $buff = '')
     {
-        ksort($data);
         if (isset($data['sign'])) unset($data['sign']);
-        foreach ($data as $k => $v) $buff .= "{$k}={$v}&";
+        ksort($data);
+        foreach ($data as $k => $v) {
+            if(!is_null($v)){
+                $buff .= "{$k}={$v}&";
+            }
+        }
         $buff .= ("key=" . $this->config->get('mch_key'));
         if (strtoupper($signType) === 'MD5') {
             return strtoupper(md5($buff));
@@ -181,6 +203,57 @@ class BasicWePay
         if ($result['return_code'] !== 'SUCCESS') {
             throw new InvalidResponseException($result['return_msg'], '0');
         }
+        return $this->_parseResult($result);
+    }
+    /**
+     * 解析返回的结果
+     * @param array $result
+     * @return bool|array
+     */
+    protected function _parseResult($result)
+    {
+        if (empty($result)) {
+            $this->errCode = 'result error';
+            $this->errMsg = '解析返回结果失败';
+            return false;
+        }
+        if ($result['return_code'] !== 'SUCCESS') {
+            $this->errCode = $result['return_code'];
+            $this->errMsg = $result['return_msg'];
+            return false;
+        }
+        if (isset($result['err_code']) && $result['err_code'] !== 'SUCCESS') {
+            $this->errMsg = $result['err_code_des'];
+            $this->errCode = $result['err_code'];
+            return false;
+        }
         return $result;
+    }
+
+    /**
+     * 获取微信支付退款通知
+     * @throws InvalidResponseException
+     * @return string
+     */
+    public function getRefundNotify()
+    {
+        $data = Tools::xml2arr(file_get_contents('php://input'));
+        if (empty($data['req_info'])) {
+            throw new InvalidResponseException('Invalid RefundNotify.', '0');
+        }
+        $decrypt     = base64_decode($data['req_info'], true);
+        $xml         = openssl_decrypt($decrypt, 'aes-256-ecb', md5($this->config->get('mch_key')), OPENSSL_RAW_DATA);
+        $refund_data = Tools::xml2arr($xml);
+        unset($data['req_info']);
+        return array_merge($data, $refund_data);
+    }
+
+    /**
+     * 返回失败通知XML
+     * @return string
+     */
+    public function getNotifyFailedReply($return_msg = '')
+    {
+        return Tools::arr2xml(['return_code' => 'FAIL', 'return_msg' => 'FAIL:' . $return_msg]);
     }
 }
