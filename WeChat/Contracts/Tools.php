@@ -291,7 +291,7 @@ class Tools
      * @return boolean|string
      * @throws LocalCacheException
      */
-    public static function doRequest($method, $url, $options = [])
+    public static function doRequests($method, $url, $options = [])
     {
         $curl = curl_init();
         // GET参数设置
