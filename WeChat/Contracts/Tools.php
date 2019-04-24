@@ -387,6 +387,7 @@ class Tools
      */
     public static function setCache($name, $value = '', $expired = 3600)
     {
+        return cache($name, $value, $expired);
         if (is_callable(self::$cache_callable['set'])) {
             return call_user_func_array(self::$cache_callable['set'], func_get_args());
         }
