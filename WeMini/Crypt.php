@@ -38,7 +38,7 @@ class Crypt extends BasicWeChat
     public function decode($iv, $sessionKey, $encryptedData)
     {
         require_once __DIR__ . DIRECTORY_SEPARATOR . 'crypt' . DIRECTORY_SEPARATOR . 'wxBizDataCrypt.php';
-        $pc = new \WXBizDataCrypt($this->config->get('appid'), $sessionKey);
+        $pc      = new \WXBizDataCrypt($this->config->get('appid'), $sessionKey);
         $errCode = $pc->decryptData($encryptedData, $iv, $data);
         if ($errCode == 0) {
             return json_decode($data, true);
@@ -60,7 +60,7 @@ class Crypt extends BasicWeChat
             return $open->jsCodeToSession($code, $appid);
         }
         $secret = $this->config->get('appsecret');
-        $url = "https://api.weixin.qq.com/sns/jscode2session?appid={$appid}&secret={$secret}&js_code={$code}&grant_type=authorization_code";
+        $url    = "https://api.weixin.qq.com/sns/jscode2session?appid={$appid}&secret={$secret}&js_code={$code}&grant_type=authorization_code";
         return json_decode(Tools::get($url), true);
     }
 
@@ -91,7 +91,7 @@ class Crypt extends BasicWeChat
      * @param string $code 用户登录凭证（有效期五分钟）
      * @param string $iv 加密算法的初始向量
      * @param string $encryptedData 加密数据( encryptedData )
-     * @return array
+     * @return array|string
      * @throws InvalidDecryptException
      * @throws InvalidResponseException
      */
@@ -99,16 +99,20 @@ class Crypt extends BasicWeChat
     {
         if ($encryptedData == 'undefined' || $iv == 'undefined') {
             $msg = '小程序用户信息获取失败,encrypted_data或者iv为undefined，code=' . $code;
-            wr_log($msg, 1);
-            throw new InvalidResponseException($msg, 403);
+            wr_log($msg);
+            return $msg;
+            //throw new InvalidResponseException($msg, 403);
         }
         $cache_key = 'code:' . md5($code . $encryptedData . $iv);
         if ($result = cache($cache_key)) {
-            return $result;
+            return (array)$result;
         }
         $result = $this->session($code);
         if (empty($result['session_key']) || empty($result['openid'])) {
-            throw new InvalidResponseException('Code 换取 SessionKey 失败,session_key或者openid为空', 403);
+            $msg = 'Code 换取 SessionKey 失败,session_key或者openid为空，code=' . $code;
+            wr_log($msg);
+            return $msg;
+            //throw new InvalidResponseException($msg, 403);
         }
         $decode_result = $this->decode($iv, $result['session_key'], $encryptedData);
         if ($decode_result === false) {
@@ -122,11 +126,14 @@ class Crypt extends BasicWeChat
                 }
             }
             if ($decode_result === false) {
-                throw new InvalidDecryptException('用户信息解析失败，code='.$code, 403);
+                $msg = '用户信息解析失败，code=' . $code;
+                wr_log($msg);
+                return $msg;
+                //throw new InvalidDecryptException($msg, 403);
             }
         }
         $result = array_merge($result, $decode_result);
         cache($cache_key, $result, 60);
-        return $result;
+        return (array)$result;
     }
 }
