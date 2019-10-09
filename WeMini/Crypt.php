@@ -138,6 +138,7 @@ class Crypt extends BasicWeChat
         cache($cache_key, $result, 60);
         return (array)$result;
 	}
+	/*
      * 用户支付完成后，获取该用户的 UnionId
      * @param string $openid 支付用户唯一标识
      * @param null|string $transaction_id 微信支付订单号
