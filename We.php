@@ -56,6 +56,9 @@ use WeChat\Exceptions\InvalidInstanceException;
  * @method \WeMini\Soter WeMiniSoter($options = []) static 小程序生物认证
  * @method \WeMini\Template WeMiniTemplate($options = []) static 小程序模板消息支持
  * @method \WeMini\Total WeMiniTotal($options = []) static 小程序数据接口
+ * @method \WeMini\Code WeMiniCode($options = []) static 小程序代码管理
+ * @method \WeMini\Domain WeMiniDomain($options = []) static 小程序域名管理
+ * @method \WeMini\Tester WeMiniTester($options = []) static 小程序体验者管理
  *
  * ----- WePay -----
  * @method \WePay\Bill WePayBill($options = []) static 微信商户账单及评论
@@ -66,6 +69,10 @@ use WeChat\Exceptions\InvalidInstanceException;
  * @method \WePay\Transfers WePayTransfers($options = []) static 微信商户打款到零钱
  * @method \WePay\TransfersBank WePayTransfersBank($options = []) static 微信商户打款到银行卡
  *
+ *  * ----- WeOpen -----
+ * @method \WeOpen\Service WeOpenService($options = []) static 开放平台
+ * @method \WeOpen\MiniApp WeOpenMiniApp($options = []) static 公众号小程序授权支持
+ * @method \WeOpen\Login WeOpenLogin($options = []) static 登录流程
  * ----- AliPay ----
  * @method \AliPay\App AliPayApp($options) static 支付宝App支付网关
  * @method \AliPay\Bill AliPayBill($options) static 支付宝电子面单下载
@@ -118,10 +125,12 @@ class We
             $class = 'WeChat\\' . substr($name, 6);
         } elseif (substr($name, 0, 6) === 'WeMini') {
             $class = 'WeMini\\' . substr($name, 6);
-        } elseif (substr($name, 0, 6) === 'AliPay') {
-            $class = 'AliPay\\' . substr($name, 6);
         } elseif (substr($name, 0, 5) === 'WePay') {
             $class = 'WePay\\' . substr($name, 5);
+        } elseif (substr($name, 0, 6) === 'WeOpen') {
+            $class = 'WeOpen\\' . substr($name, 6);
+        } elseif (substr($name, 0, 6) === 'AliPay') {
+            $class = 'AliPay\\' . substr($name, 6);
         }
         if (!empty($class) && class_exists($class)) {
             $option = array_shift($arguments);
